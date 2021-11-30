@@ -160,7 +160,7 @@ class ExternalCatalog:
         self.name = name
         self.cat = catalog
 
-        if name in ['NVSS','SUMSS','FIRST']:
+        if name in ['NVSS','SUMSS','FIRST','TGSS']:
             columns = {'ra':'RA','dec':'DEC','majax':'Maj','minax':'Min',
                        'pa':'PA','peak_flux':'Peak_flux','total_flux':'Total_flux'}
             self.sources = [SourceEllipse(source, columns) for source in self.cat]
@@ -280,6 +280,21 @@ class Pointing:
 
         return firsttable
 
+    def query_TGSS(self):
+        tgsstable = sc.getTGSSdata(ra = [self.center.ra.to_string(u.hourangle, sep=' ')],
+                                   dec = [self.center.dec.to_string(u.deg, sep=' ')],
+                                   offset = 0.5*self.fov.to(u.arcmin).value)
+
+        tgsstable['Maj'] = tgsstable['Maj'].to(u.deg)
+        tgsstable['Min'] = tgsstable['Min'].to(u.deg)
+        tgsstable['RA']  = tgsstable['RA'].to(u.deg)
+        tgsstable['DEC'] = tgsstable['DEC'].to(u.deg)
+
+        tgsstable['Peak_flux'] = tgsstable['Peak_flux'].to(u.Jy / u.beam) #convert to Jy/beam
+        tgsstable['Total_flux'] = tgsstable['Total_flux'].to(u.Jy) #convert to Jy
+
+        return tgsstable
+
     def query_SUMSS(self):
         '''
         Match the pointing to the SUMSS catalog. This is very slow since
@@ -315,7 +330,7 @@ def match_catalogs(pointing, ext, sigma_extent, search_dist):
     print(f'Matching {len(ext.sources)} sources in {ext.name} to {len(pointing.cat)} sources in the pointing')
 
     matches = []
-    for source in ext.sources:
+    for source in tqdm.tqdm(ext.sources,desc='Matching..'):
         matches.append(source.match(pointing.cat['RA'], pointing.cat['DEC'],
                                     pointing.cat['Maj'],pointing.cat['Min'],
                                     pointing.cat['PA'],
@@ -469,7 +484,9 @@ def plot_catalog_match(pointing, ext, matches, plot, dpi):
     ax.set_ylabel('DEC (degrees)')
 
     if plot is True:
-        plt.savefig(os.path.join(pointing.dirname,f'match_{ext.name}_{pointing.name}_shapes.png'), dpi=dpi, bbox_inches='tight')
+        savef = os.path.join(pointing.dirname,f'match_{ext.name}_{pointing.name}_shapes.png')
+        print ("Saving to %s"%savef)
+        plt.savefig(savef, dpi=dpi, bbox_inches='tight')
     else:
         plt.savefig(plot, dpi=dpi)
 
@@ -488,7 +505,8 @@ def plot_astrometrics(match_info, pointing, ext, astro, dpi):
 
     sc = ax.scatter(match_info['offset']['dRA'], match_info['offset']['dDEC'], zorder=2,
                     marker='.', s=5,
-                    c=match_info['offset']['n_matches'], cmap=cmap, norm=norm)
+                    c=match_info['offset']['n_matches'], cmap=cmap, norm=norm
+                    ,alpha=0.5)
 
     # Add colorbar to set matches
     divider = make_axes_locatable(ax)
@@ -506,14 +524,22 @@ def plot_astrometrics(match_info, pointing, ext, astro, dpi):
                            facecolor='none',
                            edgecolor='b',
                            linestyle='dashed',
-                           label=f'{ext.name} beam')
+                           # label=f'{ext.name} beam')
+                           zorder=10,
+                           label=f'{ext.freq:.0f} MHz beam')
     int_beam_ell = Ellipse(xy=(0,0),
                            width=pointing.BMin,
                            height=pointing.BMaj,
                            angle=-pointing.BPA,
                            facecolor='none',
                            edgecolor='k',
-                           label=f'{pointing.telescope} beam')
+                           # label=f'{pointing.telescope} beam')
+                           zorder=10,
+                           label=f'{pointing.freq:.0f} MHz beam')
+
+    print ('====> Pointing Bmaj, Bmin',pointing.BMaj,pointing.BMin)
+    print ('====> External Bmaj, Bmin',ext.BMaj,ext.BMin)
+
 
     ax.add_patch(ext_beam_ell)
     ax.add_patch(int_beam_ell)
@@ -557,7 +583,9 @@ def plot_astrometrics(match_info, pointing, ext, astro, dpi):
     ax.legend(loc='upper right')
 
     if astro is True:
-        plt.savefig(os.path.join(pointing.dirname,f'match_{ext.name}_{pointing.name}_astrometrics.png'), dpi=dpi)
+        savef = os.path.join(pointing.dirname,f'match_{ext.name}_{pointing.name}_astrometrics.png')
+        print ("Saving to %s"%savef)
+        plt.savefig(savef, dpi=dpi)
     else:
         plt.savefig(astro, dpi=dpi)
     plt.close()
@@ -593,11 +621,65 @@ def plot_fluxes(match_info, pointing, ext, fluxtype, flux, dpi):
     ax.set_xlabel('Distance from pointing center (degrees)')
     ax.set_ylabel(f'Flux ratio ({fluxtype} flux)')
 
+
+    ax.axhline(1.0,ls='dashed',c='k')
+    med = np.median(flux_matches['dFlux'])
+    std = np.std(flux_matches['dFlux'])
+    print("Median flux ratio:", med)
+    print("Standard deviation:", std)
+
+    ax.annotate('Median +/- std', xy=(0.05,0.95), xycoords='axes fraction', fontsize=8)
+    ax.annotate(f"{med:.2f}+-{std:.2f}",
+                xy=(0.05,0.90), xycoords='axes fraction', fontsize=8)
+
     if flux is True:
-        plt.savefig(os.path.join(pointing.dirname,f'match_{ext.name}_{pointing.name}_fluxes.png'), dpi=dpi)
+        savef = os.path.join(pointing.dirname,f'match_{ext.name}_{pointing.name}_fluxes.png')
+        print ("Saving to %s"%savef)
+        plt.savefig(savef, dpi=dpi)
     else:
         plt.savefig(flux, dpi=dpi)
     plt.close()
+
+    # Plot Zoom with linear scale
+    fig, ax = plt.subplots()
+
+    sc = ax.scatter(flux_matches['separation'], 
+                    flux_matches['dFlux'],
+                    marker='.', s=5,
+                    c=flux_matches['n_matches'], cmap=cmap, norm=norm)
+
+    # Add colorbar to set matches
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    cbar = fig.colorbar(sc, cax=cax)
+
+    cbar.set_ticks([1,2,3,4])
+    cax.set_yticklabels(['1','2','3','>3'])
+    cax.set_title('Matches')
+
+    ax.set_title(f"Flux ratio of {len(flux_matches['dFlux'])} sources")
+    ax.set_xlabel('Distance from pointing center (degrees)')
+    ax.set_ylabel(f'Flux ratio ({fluxtype} flux)')
+
+
+    ax.axhline(1.0,ls='dashed',c='k')
+    med = np.median(flux_matches['dFlux'])
+    std = np.std(flux_matches['dFlux'])
+    print("Median flux ratio:", med)
+    print("Standard deviation:", std)
+
+    ax.annotate('Median +/- std', xy=(0.05,0.95), xycoords='axes fraction', fontsize=8)
+    ax.annotate(f"{med:.2f}+-{std:.2f}",
+                xy=(0.05,0.90), xycoords='axes fraction', fontsize=8)
+
+    ax.set_ylim(0.0,3.0)
+
+    if flux is True:
+        savef = os.path.join(pointing.dirname,f'match_{ext.name}_{pointing.name}_fluxes_zoom.png')
+        print ('Saving to %s'%savef)
+        plt.savefig(savef, dpi=dpi)
+    plt.close()
+
 
 def write_to_catalog(pointing, ext, matches, output):
     '''
@@ -664,6 +746,9 @@ def main():
         ext_catalog = ExternalCatalog(ext_cat, ext_table, pointing.center)
     elif ext_cat == 'FIRST':
         ext_table = pointing.query_FIRST()
+        ext_catalog = ExternalCatalog(ext_cat, ext_table, pointing.center)
+    elif ext_cat == 'TGSS':
+        ext_table = pointing.query_TGSS()
         ext_catalog = ExternalCatalog(ext_cat, ext_table, pointing.center)
     elif os.path.exists(ext_cat):
         ext_table = Table.read(ext_cat)
@@ -757,3 +842,24 @@ def new_argument_parser():
 
 if __name__ == '__main__':
     main()
+
+    ### Match 23 to 46
+    # time python catalog_matching.py ./data/Abell2256_23MHz_pybdsf/Abell2256_23MHz_bdsfcat.fits ./data/Abell2256_46MHz_pybdsf/Abell2256_46MHz_bdsfcat.fits --astro --flux --output matchcatalogue.fits --plot 
+
+    ## Match 46 to NVSS
+    # time python catalog_matching.py ./data/Abell2256_46MHz_pybdsf/Abell2256_46MHz_bdsfcat.fits NVSS --astro --flux --output match46toNVSS.fits --plot 
+
+    ## Match 23 to NVSS
+    # time python catalog_matching.py ./data/Abell2256_23MHz_pybdsf/Abell2256_23MHz_bdsfcat.fits NVSS --astro --flux --output match23toNVSS.fits --plot 
+
+    ## Match 144 to NVSS
+    # time python catalog_matching.py ./data/Abell2256_144MHz_pybdsf/Abell2256_144MHz_bdsfcat.fits NVSS --astro --flux --output match144toNVSS.fits --plot 
+
+    ## Match 46 to 144
+    # time python catalog_matching.py ./data/Abell2256_46MHz_pybdsf/Abell2256_46MHz_bdsfcat.fits ./data/Abell2256_144MHz_pybdsf/Abell2256_144MHz_bdsfcat.fits --astro --flux --output match46to144.fits --plot 
+
+    ## Match 23 to 144
+    # time python catalog_matching.py ./data/Abell2256_23MHz_pybdsf/Abell2256_23MHz_bdsfcat.fits ./data/Abell2256_144MHz_pybdsf/Abell2256_144MHz_bdsfcat.fits --astro --flux --output match23to144.fits --plot 
+
+    ## Match 23 to TGSS
+    # time python catalog_matching.py ./data/Abell2256_23MHz_pybdsf/Abell2256_23MHz_bdsfcat.fits TGSS --astro --flux --output match23toTGSS.fits --plot 

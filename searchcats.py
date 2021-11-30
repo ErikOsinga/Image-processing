@@ -17,6 +17,7 @@ from astropy.coordinates import SkyCoord, Angle
 FIRSTCATURL='http://sundog.stsci.edu/cgi-bin/searchfirst'
 NVSSCATURL='http://www.cv.nrao.edu/cgi-bin/NVSSlist.pl'
 SUMSSCATURL='http://www.astrop.physics.usyd.edu.au/sumsscat/sumsscat.Mar-11-2008'
+TGSSCATURL='https://vo.astron.nl/tgssadr/q/cone/form'
 
 def geturl(url,params,timeout,tries=5):
     '''
@@ -332,3 +333,31 @@ def getnvssdata(ra,dec,offset):
     nvsstable.add_column(c, index=0)
 
     return nvsstable
+
+def getTGSSdata(ra,dec,offset):
+    '''
+    At a given ra,dec and required search radius, search the TGSS catalogue and
+    produce a list of all of the TGSS data at given position. An empty array is returned
+    if there is nothing. Else the returned array contains [[source data 1],[source data 2],...]
+    '''
+
+    # offset in arcmin
+    tgssurl = f'https://vo.astron.nl/tgssadr/q/cone/form?__nevow_form__=genForm&hscs_pos={" ".join(ra)}%2C%20{" ".join(dec)}&hscs_sr={offset}&_DBOPTIONS_ORDER=Distance&_DBOPTIONS_DIR=ASC&MAXREC={int(1e6)}&_FORMAT=FITS&_VERB=H&submit=Go'
+
+    tgssurl = tgssurl.replace(' ', r'%20')
+
+    # Save the data as a fits file
+    os.system(f"wget '{tgssurl}' -O tgss.fits")
+
+    tgssdata = Table.read('tgss.fits')
+
+    oldnames = tgssdata.colnames
+    newnames = [
+                'Distance', 'ID', 'RA','E_RA','DEC','E_DEC','Total_flux','E_Total_Flux',
+                'Peak_flux','E_Peak_flux','Maj','E_Maj','Min','E_Min','PA','E_PA','isl_RMS',
+                'S_Code','Mosaic_Name'
+
+                ]
+    tgssdata.rename_columns(oldnames,newnames)
+
+    return tgssdata

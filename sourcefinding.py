@@ -349,3 +349,9 @@ def new_argument_parser():
 
 if __name__ == '__main__':
     main()
+
+
+
+# time python3 sourcefinding.py catalog ./data/Abell2256_23MHz.int.restored.fits -o fits --plot SourceFind23MHz.png
+# time python3 sourcefinding.py catalog ./data/Abell2256_46MHz.int.restored.fits -o fits --plot SourceFind46MHz.png 
+# time python3 sourcefinding.py catalog ./data/Abell2256_144MHz.int.restored.fits -o fits --plot SourceFind144MHz.png 

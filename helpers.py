@@ -91,7 +91,7 @@ def get_beam(identity, ra_center, dec_center):
     the beam shape changes per position, the position needs to be given as well
 
     Keyword arguments:
-    identity (string) -- The name of the survey (NVSS,SUMSS,FIRST)
+    identity (string) -- The name of the survey (NVSS,SUMSS,FIRST,TGSS)
     ra_center (float) -- Right ascension to get the beam at
     dec_center (float) -- Declination to get the beam at
     '''
@@ -113,6 +113,10 @@ def get_beam(identity, ra_center, dec_center):
                     BMaj = beam_dict[identity]['Maj3']
     if identity=='SUMSS':
         BMaj = BMaj/np.sin(np.radians(dec_center))
+
+    if identity=='TGSS':
+        if (dec_center < 19):
+            Bmaj = Bmaj / np.cos(np.radians(dec_center-19))
 
     beam = [BMaj,BMin,BPA]
     return beam, freq
