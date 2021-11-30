@@ -26,6 +26,7 @@ from shapely.geometry import Polygon
 import kvis_write_lib as kvis
 import searchcats as sc
 import helpers
+import tqdm
 
 gc.enable()
 
